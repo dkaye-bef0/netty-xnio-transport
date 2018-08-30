@@ -37,11 +37,11 @@ final class XnioTestsuiteUtils {
     private static final EventLoopGroup GROUP;
 
     static {
-        try {
+        // try {
             GROUP = new XnioEventLoopGroup();
-        } catch (IOException e) {
+        /*} catch (IOException e) {
             throw new IllegalStateException(e);
-        }
+        }*/
     }
 
     static List<ByteBufAllocator> newAllocators(List<ByteBufAllocator> allocs) {
