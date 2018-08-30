@@ -43,8 +43,6 @@ import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.SocketAddress
 
-import scala.util.control.Breaks._
-
 /**
   * {@link ServerSocketChannel} base class for our XNIO transport
   *
@@ -141,15 +139,13 @@ abstract class AbstractXnioServerSocketChannel extends AbstractServerChannel wit
         try {
           val messagesToRead = config.getMaxMessagesPerRead
           var i = 0
+          var s:StreamConnection = null
           while ( {
-            i < messagesToRead
+            (i < messagesToRead) &&
+            (s = channel.accept()) != null
           }) {
-            val conn = channel.accept
-            if (conn == null) break //todo: break is not supported
-            pipeline.fireChannelRead(new WrappingXnioSocketChannel(AbstractXnioServerSocketChannel.this, conn))
-            {
-              i += 1; i - 1
-            }
+            pipeline.fireChannelRead(new WrappingXnioSocketChannel(AbstractXnioServerSocketChannel.this, s))
+            i += 1
           }
         } catch {
           case cause: Throwable =>
@@ -163,15 +159,12 @@ abstract class AbstractXnioServerSocketChannel extends AbstractServerChannel wit
         val array = AbstractXnioServerSocketChannel.connectionsArray(messagesToRead)
         try {
           var i = 0
+          var s:StreamConnection = null
           while ( {
-            i < messagesToRead
+            (i < messagesToRead) &&
+            (array(i) = channel.accept()) != null
           }) {
-            val conn = channel.accept
-            array(i) = conn
-            if (conn == null) break; //todo: break is not supported
-            {
-              i += 1; i - 1
-            }
+            i += 1
           }
           cause = null
         } catch {
@@ -183,15 +176,13 @@ abstract class AbstractXnioServerSocketChannel extends AbstractServerChannel wit
           override def run(): Unit = {
             try {
               var i = 0
+              var s:StreamConnection = null
               while ( {
-                i < array.length
+                (i < array.length) &&
+                (s = array(i)) != null
               }) {
-                val conn = array(i)
-                if (conn == null) break //todo: break is not supported
-                pipeline.fireChannelRead(new WrappingXnioSocketChannel(AbstractXnioServerSocketChannel.this, conn))
-                {
-                  i += 1; i - 1
-                }
+                pipeline.fireChannelRead(new WrappingXnioSocketChannel(AbstractXnioServerSocketChannel.this, s))
+                i += 1
               }
             } catch {
               case cause: Throwable =>
@@ -204,5 +195,4 @@ abstract class AbstractXnioServerSocketChannel extends AbstractServerChannel wit
       }
     }
   }
-
 }
