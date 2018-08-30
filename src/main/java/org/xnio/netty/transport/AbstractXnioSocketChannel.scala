@@ -102,7 +102,7 @@ abstract class AbstractXnioSocketChannel private[transport](_parent: AbstractXni
   override protected def doDisconnect(): Unit = doClose()
 
   private def incompleteWrite(setOpWrite: Boolean) = { // Did not write completely.
-    if (setOpWrite) setOpWrite()
+    if (setOpWrite) this.setOpWrite()
     else { // Schedule flush again later so other tasks can be picked up in the meantime
       var flushTask = this.flushTask
       if (flushTask == null) {
@@ -142,7 +142,7 @@ abstract class AbstractXnioSocketChannel private[transport](_parent: AbstractXni
           if (nioBuffers != null) {
             val nioBufferCnt = in.nioBufferCount
             var expectedWrittenBytes = in.nioBufferSize
-            var writtenBytes = 0
+            var writtenBytes = 0L
             var done = false
             var setOpWrite = false
             var i = config.getWriteSpinCount - 1
@@ -174,10 +174,8 @@ abstract class AbstractXnioSocketChannel private[transport](_parent: AbstractXni
               while ( {
                 i > 0
               }) {
-                in.remove() {
-                  i -= 1;
-                  i + 1
-                }
+                in.remove()
+                i -= 1
               }
               // Finish the write loop if no new messages were flushed by in.remove().
               if (in.isEmpty) {
@@ -285,7 +283,7 @@ abstract class AbstractXnioSocketChannel private[transport](_parent: AbstractXni
           val region = msg.asInstanceOf[FileRegion]
           var setOpWrite = false
           var done = false
-          var flushedAmount = 0
+          var flushedAmount = 0L
           if (writeSpinCount == -1) writeSpinCount = config.getWriteSpinCount
           var i = writeSpinCount - 1
 
@@ -352,7 +350,7 @@ abstract class AbstractXnioSocketChannel private[transport](_parent: AbstractXni
     conn.getPeerAddress
   }
 
-  abstract protected class AbstractXnioUnsafe extends AbstractChannel#AbstractUnsafe {
+  abstract protected class AbstractXnioUnsafe extends AbstractUnsafe {
     private[AbstractXnioSocketChannel] var readPending = false
 
     override def beginRead(): Unit = { // Channel.read() or ChannelHandlerContext.read() was called
@@ -376,7 +374,7 @@ abstract class AbstractXnioSocketChannel private[transport](_parent: AbstractXni
     private def removeReadOp(channel: ConduitStreamSourceChannel) = if (channel.isReadResumed) channel.suspendReads()
 
     private def closeOnRead() = {
-      val connection = connection
+      val connection = AbstractXnioSocketChannel.this.connection
       AbstractXnioSocketChannel.suspend(connection)
       if (isOpen) unsafe.close(unsafe.voidPromise)
     }

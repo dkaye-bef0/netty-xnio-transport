@@ -46,10 +46,10 @@ import java.net.SocketAddress
   */
 final class WrappingXnioSocketChannel private[transport](parent: AbstractXnioServerSocketChannel, val channel: StreamConnection) extends AbstractXnioSocketChannel(parent) with IoThreadPowered {
   if (channel == null) throw new NullPointerException("channel")
-  this.thread = channel.getIoThread
+  final private var thread:XnioIoThread = channel.getIoThread
+
   config.setTcpNoDelay(true)
-  channel.getSourceChannel.getReadSetter.set(new AbstractXnioSocketChannel#ReadListener)
-  final private var thread:XnioIoThread = null
+  channel.getSourceChannel.getReadSetter.set(new ReadListener)
 
   /**
     * Create a new {@link WrappingXnioSocketChannel} which was created via the given {@link AcceptingChannel} and uses
@@ -73,12 +73,12 @@ final class WrappingXnioSocketChannel private[transport](parent: AbstractXnioSer
 
   override def ioThread: XnioIoThread = thread
 
-  override protected def newUnsafe = new WrappingXnioSocketChannel#XnioUnsafe
+  override protected def newUnsafe = new XnioUnsafe
 
   @throws[Exception]
   override protected def doBind(localAddress: SocketAddress) = throw new UnsupportedOperationException("Wrapped XNIO Channel")
 
-  final private class XnioUnsafe extends AbstractXnioSocketChannel#AbstractXnioUnsafe {
+  final class XnioUnsafe extends AbstractXnioUnsafe {
     override def connect(remoteAddress: SocketAddress, localAddress: SocketAddress, promise: ChannelPromise): Unit = promise.setFailure(new UnsupportedOperationException("Wrapped XNIO Channel"))
   }
 

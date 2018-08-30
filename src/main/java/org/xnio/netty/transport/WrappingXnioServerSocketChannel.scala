@@ -33,16 +33,18 @@ package org.xnio.netty.transport
 
 import org.xnio.Option
 import org.xnio.XnioIoThread
-import org.xnio.channels.{AcceptingChannel,ConnectedChannel}
+import org.xnio.channels.{ConnectedChannel, AcceptingChannel}
 import java.io.IOException
 import java.net.SocketAddress
+
+import org.xnio.StreamConnection
 
 /**
   * {@link AbstractXnioServerSocketChannel} implementation which allows to use a {@link AcceptingChannel} and wrap it.
   *
   * @author <a href="mailto:nmaurer@redhat.com">Norman Maurer</a>
   */
-final class WrappingXnioServerSocketChannel @SuppressWarnings(Array("unchecked"))(val channel: AcceptingChannel[_ <: ConnectedChannel])
+final class WrappingXnioServerSocketChannel @SuppressWarnings(Array("unchecked"))(channel: AcceptingChannel[StreamConnection])
 
 /**
   * Create a new instance wrapping the given {@link AcceptingChannel}

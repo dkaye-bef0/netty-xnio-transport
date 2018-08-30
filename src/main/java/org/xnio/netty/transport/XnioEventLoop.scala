@@ -111,52 +111,53 @@ final class XnioEventLoop extends AbstractEventExecutor with EventLoop with IoTh
   }
 
   override def scheduleWithFixedDelay(command: Runnable, initialDelay: Long, delay: Long, unit: TimeUnit): ScheduledFuture[_] = {
-    val wrapper = new XnioEventLoop#FixedScheduledFuture(command, initialDelay, delay, unit)
+    val wrapper = new FixedScheduledFuture(command, initialDelay, delay, unit)
     wrapper.key = executor.executeAfter(wrapper, delay, unit)
     wrapper
   }
 
   override def scheduleAtFixedRate(command: Runnable, initialDelay: Long, period: Long, unit: TimeUnit): ScheduledFuture[_] = {
-    val wrapper = new XnioEventLoop#FixedRateScheduledFuture(command, initialDelay, period, unit)
+    val wrapper = new FixedRateScheduledFuture(command, initialDelay, period, unit)
     wrapper.key = executor.executeAfter(wrapper, initialDelay, unit)
     wrapper
   }
 
   override def next: XnioEventLoop = this
 
-  final private class FixedRateScheduledFuture private(task: Runnable, delay: Long, val period: Long, val unit: TimeUnit) extends XnioEventLoop#ScheduledFutureWrapper[AnyRef](Executors.callable(task), delay, unit) {
+  final class FixedRateScheduledFuture(taskInit: Runnable, initialDelay: Long, val period: Long, val unit: TimeUnit) extends ScheduledFutureWrapper[AnyRef](Executors.callable(taskInit), initialDelay, unit) {
     private var count = 1
-    private val initialDelay = delay
 
     override def run(): Unit = try {
-      super.task.call
-      super.start = System.nanoTime
-      super.delay = initialDelay + period * {
+      task.call()
+      start = System.nanoTime
+      delay = initialDelay + period * {
         count += 1; count
       }
       key = XnioEventLoop.this.executor.executeAfter(this, delay, TimeUnit.NANOSECONDS)
     } catch {
-      case cause: Throwable =>
-        tryFailure(cause)
+      case cause: Throwable => {
+        val p:DefaultPromise[_] = FixedRateScheduledFuture.this
+        p.tryFailure(cause)
+      }
     }
   }
 
-  final private class FixedScheduledFuture private(task: Runnable, val initialDelay: Long, delay: Long, val unit: TimeUnit) extends XnioEventLoop#ScheduledFutureWrapper[AnyRef](Executors.callable(task), initialDelay, unit) {
-    this.furtherDelay = unit.toNanos(initialDelay)
-    private var furtherDelay = 0L
+  final class FixedScheduledFuture(initialTask: Runnable, val initialDelay: Long, initialFurtherDelay: Long, val unit: TimeUnit) extends ScheduledFutureWrapper[AnyRef](Executors.callable(initialTask), initialDelay, unit) {
+    private val furtherDelay = unit.toNanos(initialFurtherDelay)
 
-    override def run(): Unit = try {
-      super.task.call
-      super.start = System.nanoTime
-      super.delay = furtherDelay
-      super.key = XnioEventLoop.this.executor.executeAfter(this, furtherDelay, TimeUnit.NANOSECONDS)
-    } catch {
-      case cause: Throwable =>
-        tryFailure(cause)
-    }
+    override def run(): Unit =
+      try {
+        task.call()
+        start = System.nanoTime
+        delay = furtherDelay
+        key = XnioEventLoop.this.executor.executeAfter(this, furtherDelay, TimeUnit.NANOSECONDS)
+      } catch {
+        case cause: Throwable =>
+          tryFailure(cause)
+      }
   }
 
-  private class ScheduledFutureWrapper[V] private[transport](val task: Callable[V], var delay: Long) extends DefaultPromise[V] with ScheduledFuture[V] with Runnable {
+  class ScheduledFutureWrapper[V](val task: Callable[V], var delay: Long) extends DefaultPromise[V] with ScheduledFuture[V] with Runnable {
     protected[XnioEventLoop] var key: XnioExecutor.Key = null
     protected var start = System.nanoTime
 

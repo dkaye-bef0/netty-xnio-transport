@@ -42,7 +42,7 @@ import java.util
 /**
   * @author <a href="mailto:nmaurer@redhat.com">Norman Maurer</a>
   */
-final class XnioServerSocketChannelConfigImpl private[transport](val channel: AbstractXnioServerSocketChannel) extends DefaultChannelConfig(channel) with XnioServerSocketChannelConfig {
+final class XnioServerSocketChannelConfigImpl private[transport](channel: AbstractXnioServerSocketChannel) extends DefaultChannelConfig(channel) with XnioServerSocketChannelConfig {
   override def getOptions: util.Map[ChannelOption[_], AnyRef] = getOptions(super.getOptions, XnioChannelOption.BALANCING_CONNECTIONS, XnioChannelOption.BALANCING_TOKENS, XnioChannelOption.CONNECTION_HIGH_WATER, XnioChannelOption.CONNECTION_LOW_WATER)
 
   @SuppressWarnings(Array("unchecked")) override def getOption[T](option: ChannelOption[T]): T = {
@@ -66,21 +66,21 @@ final class XnioServerSocketChannelConfigImpl private[transport](val channel: Ab
   override def getBacklog: Int = channel.getOption(Options.BACKLOG)
 
   override def setBacklog(backlog: Int): XnioServerSocketChannelConfig = {
-    channel.setOption(Options.BACKLOG, backlog)
+    channel.setOption(Options.BACKLOG, backlog:Integer)
     this
   }
 
   override def isReuseAddress: Boolean = channel.getOption(Options.REUSE_ADDRESSES)
 
   override def setReuseAddress(reuseAddress: Boolean): XnioServerSocketChannelConfig = {
-    channel.setOption(Options.REUSE_ADDRESSES, reuseAddress)
+    channel.setOption(Options.REUSE_ADDRESSES, reuseAddress:java.lang.Boolean)
     this
   }
 
   override def getReceiveBufferSize: Int = channel.getOption(Options.RECEIVE_BUFFER)
 
   override def setReceiveBufferSize(receiveBufferSize: Int): XnioServerSocketChannelConfig = {
-    channel.setOption(Options.RECEIVE_BUFFER, receiveBufferSize)
+    channel.setOption(Options.RECEIVE_BUFFER, receiveBufferSize:Integer)
     this
   }
 
@@ -137,22 +137,22 @@ final class XnioServerSocketChannelConfigImpl private[transport](val channel: Ab
   }
 
   override def setConnectionHighWater(connectionHighWater: Int): XnioServerSocketChannelConfig = {
-    channel.setOption(Options.CONNECTION_HIGH_WATER, connectionHighWater)
+    channel.setOption(Options.CONNECTION_HIGH_WATER, connectionHighWater:Integer)
     this
   }
 
   override def setConnectionLowWater(connectionLowWater: Int): XnioServerSocketChannelConfig = {
-    channel.setOption(Options.CONNECTION_LOW_WATER, connectionLowWater)
+    channel.setOption(Options.CONNECTION_LOW_WATER, connectionLowWater:Integer)
     this
   }
 
   override def setBalancingTokens(balancingTokens: Int): XnioServerSocketChannelConfig = {
-    channel.setOption(Options.BALANCING_TOKENS, balancingTokens)
+    channel.setOption(Options.BALANCING_TOKENS, balancingTokens:Integer)
     this
   }
 
   override def setBalancingConnections(connections: Int): XnioServerSocketChannelConfig = {
-    channel.setOption(Options.BALANCING_CONNECTIONS, connections)
+    channel.setOption(Options.BALANCING_CONNECTIONS, connections:Integer)
     this
   }
 

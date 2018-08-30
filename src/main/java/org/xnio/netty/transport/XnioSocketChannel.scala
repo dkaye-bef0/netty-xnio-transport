@@ -53,7 +53,7 @@ class XnioSocketChannel() extends AbstractXnioSocketChannel(null) {
   final private val options = OptionMap.builder
   private var channel: StreamConnection = null
 
-  override protected def newUnsafe = new XnioSocketChannel#XnioUnsafe
+  override protected def newUnsafe = new XnioUnsafe
 
   @throws[IOException]
   override protected def setOption0[T](option: Option[T], value: T): Unit = if (channel == null) options.set(option, value)
@@ -68,7 +68,7 @@ class XnioSocketChannel() extends AbstractXnioSocketChannel(null) {
   @throws[Exception]
   override protected def doBind(localAddress: SocketAddress) = throw new UnsupportedOperationException("Not supported to bind in a separate step")
 
-  final private class XnioUnsafe extends AbstractXnioSocketChannel#AbstractXnioUnsafe {
+  final class XnioUnsafe extends AbstractXnioUnsafe {
     override def connect(remoteAddress: SocketAddress, localAddress: SocketAddress, promise: ChannelPromise): Unit = {
       if (!ensureOpen(promise)) return
       val wasActive = isActive
@@ -78,15 +78,17 @@ class XnioSocketChannel() extends AbstractXnioSocketChannel(null) {
       else future = thread.openStreamConnection(localAddress, remoteAddress, null, null, options.getMap)
       promise.addListener(new ChannelFutureListener() {
         @throws[Exception]
-        override def operationComplete(channelFuture: ChannelFuture): Unit = if (channelFuture.isSuccess) if (!wasActive && isActive) pipeline.fireChannelActive
-        else closeIfClosed()
+        override def operationComplete(channelFuture: ChannelFuture): Unit = {
+          if (channelFuture.isSuccess) if (!wasActive && isActive) pipeline.fireChannelActive
+          else closeIfClosed()
+        }
       })
       future.addNotifier(new IoFuture.Notifier[StreamConnection, ChannelPromise]() {
         override def notify(ioFuture: IoFuture[_ <: StreamConnection], promise: ChannelPromise): Unit = {
           val status = ioFuture.getStatus
           if (status eq IoFuture.Status.DONE) try {
             channel = ioFuture.get
-            channel.getSourceChannel.getReadSetter.set(new AbstractXnioSocketChannel#ReadListener)
+            channel.getSourceChannel.getReadSetter.set(new ReadListener)
             promise.setSuccess
             channel.getSourceChannel.resumeReads()
           } catch {

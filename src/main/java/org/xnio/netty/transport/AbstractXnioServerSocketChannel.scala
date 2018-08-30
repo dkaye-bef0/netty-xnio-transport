@@ -131,7 +131,7 @@ abstract class AbstractXnioServerSocketChannel extends AbstractServerChannel wit
     * {@link ChannelListener} implementation which takes care of accept connections and fire them through the
     * {@link io.netty.channel.ChannelPipeline}.
     */
-  final private[transport] class AcceptListener extends ChannelListener[AcceptingChannel[StreamConnection]] {
+  final class AcceptListener extends ChannelListener[AcceptingChannel[StreamConnection]] {
     override def handleEvent(channel: AcceptingChannel[StreamConnection]): Unit = {
       if (!config.isAutoRead) channel.suspendAccepts()
       val loop = eventLoop

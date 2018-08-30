@@ -41,11 +41,11 @@ import org.xnio.Options
 /**
   * @author <a href="mailto:nmaurer@redhat.com">Norman Maurer</a>
   */
-final class XnioSocketChannelConfig private[transport](val channel: AbstractXnioSocketChannel) extends DefaultChannelConfig(channel) with SocketChannelConfig {
+final class XnioSocketChannelConfig private[transport](channel: AbstractXnioSocketChannel) extends DefaultChannelConfig(channel) with SocketChannelConfig {
   override def isTcpNoDelay: Boolean = channel.getOption(Options.TCP_NODELAY)
 
   override def setTcpNoDelay(tcpNoDelay: Boolean): SocketChannelConfig = {
-    channel.setOption(Options.TCP_NODELAY, tcpNoDelay)
+    channel.setOption(Options.TCP_NODELAY, tcpNoDelay:java.lang.Boolean)
     this
   }
 
@@ -56,35 +56,35 @@ final class XnioSocketChannelConfig private[transport](val channel: AbstractXnio
   override def getSendBufferSize: Int = channel.getOption(Options.SEND_BUFFER)
 
   override def setSendBufferSize(sendBufferSize: Int): SocketChannelConfig = {
-    channel.setOption(Options.SEND_BUFFER, sendBufferSize)
+    channel.setOption(Options.SEND_BUFFER, sendBufferSize:Integer)
     this
   }
 
   override def getReceiveBufferSize: Int = channel.getOption(Options.RECEIVE_BUFFER)
 
   override def setReceiveBufferSize(receiveBufferSize: Int): SocketChannelConfig = {
-    channel.setOption(Options.RECEIVE_BUFFER, receiveBufferSize)
+    channel.setOption(Options.RECEIVE_BUFFER, receiveBufferSize:Integer)
     this
   }
 
   override def isKeepAlive: Boolean = channel.getOption(Options.KEEP_ALIVE)
 
   override def setKeepAlive(keepAlive: Boolean): SocketChannelConfig = {
-    channel.setOption(Options.KEEP_ALIVE, keepAlive)
+    channel.setOption(Options.KEEP_ALIVE, keepAlive:java.lang.Boolean)
     this
   }
 
   override def getTrafficClass: Int = channel.getOption(Options.IP_TRAFFIC_CLASS)
 
   override def setTrafficClass(trafficClass: Int): SocketChannelConfig = {
-    channel.setOption(Options.IP_TRAFFIC_CLASS, trafficClass)
+    channel.setOption(Options.IP_TRAFFIC_CLASS, trafficClass:Integer)
     this
   }
 
   override def isReuseAddress: Boolean = channel.getOption(Options.REUSE_ADDRESSES)
 
   override def setReuseAddress(reuseAddress: Boolean): SocketChannelConfig = {
-    channel.setOption(Options.REUSE_ADDRESSES, reuseAddress)
+    channel.setOption(Options.REUSE_ADDRESSES, reuseAddress:java.lang.Boolean)
     this
   }
 
