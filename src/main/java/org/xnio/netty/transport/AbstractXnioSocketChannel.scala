@@ -32,9 +32,7 @@
 package org.xnio.netty.transport
 
 import io.netty.buffer.ByteBuf
-import io.netty.buffer.ByteBufAllocator
 import io.netty.channel.AbstractChannel
-import io.netty.channel.ChannelConfig
 import io.netty.channel.ChannelException
 import io.netty.channel.ChannelFuture
 import io.netty.channel.ChannelMetadata
@@ -46,7 +44,6 @@ import io.netty.channel.FileRegion
 import io.netty.channel.RecvByteBufAllocator
 import io.netty.channel.socket.ServerSocketChannel
 import io.netty.channel.socket.SocketChannel
-import io.netty.channel.socket.SocketChannelConfig
 import io.netty.util.IllegalReferenceCountException
 import io.netty.util.internal.StringUtil
 import org.xnio.ChannelListener
@@ -57,8 +54,6 @@ import org.xnio.conduits.ConduitStreamSourceChannel
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.SocketAddress
-import java.nio.ByteBuffer
-import java.nio.channels.GatheringByteChannel
 
 import scala.util.control.Breaks._
 
@@ -140,166 +135,192 @@ abstract class AbstractXnioSocketChannel private[transport](_parent: AbstractXni
     while ( {
       true
     }) { // Do gathering write for a non-single buffer case.
-      val msgCount = in.size
-      if (msgCount > 0) { // Ensure the pending writes are made of ByteBufs only.
-        val nioBuffers = in.nioBuffers
-        if (nioBuffers != null) {
-          val nioBufferCnt = in.nioBufferCount
-          var expectedWrittenBytes = in.nioBufferSize
-          var writtenBytes = 0
-          var done = false
+      breakable {
+        val msgCount = in.size
+        if (msgCount > 0) { // Ensure the pending writes are made of ByteBufs only.
+          val nioBuffers = in.nioBuffers
+          if (nioBuffers != null) {
+            val nioBufferCnt = in.nioBufferCount
+            var expectedWrittenBytes = in.nioBufferSize
+            var writtenBytes = 0
+            var done = false
+            var setOpWrite = false
+            var i = config.getWriteSpinCount - 1
+
+            breakable {
+              while ( {
+                i >= 0
+              }) {
+                val localWrittenBytes = sink.write(nioBuffers, 0, nioBufferCnt)
+                if (localWrittenBytes == 0) {
+                  setOpWrite = true
+                  break //todo: break is not supported
+                }
+                expectedWrittenBytes -= localWrittenBytes
+                writtenBytes += localWrittenBytes
+                if (expectedWrittenBytes == 0) {
+                  done = true
+                  break //todo: break is not supported
+                }
+                {
+                  i -= 1;
+                  i + 1
+                }
+              }
+            }
+
+            if (done) { // Release all buffers
+              var i = msgCount
+              while ( {
+                i > 0
+              }) {
+                in.remove() {
+                  i -= 1;
+                  i + 1
+                }
+              }
+              // Finish the write loop if no new messages were flushed by in.remove().
+              if (in.isEmpty) {
+                connection.getSinkChannel.suspendWrites()
+                // break //todo: break is not supported
+                return
+              }
+            }
+            else { // Did not write all buffers completely.
+              // Release the fully written buffers and update the indexes of the partially written buffer.
+              var i = msgCount
+              breakable {
+                while ( {
+                  i > 0
+                }) {
+                  val buf = in.current.asInstanceOf[ByteBuf]
+                  val readerIndex = buf.readerIndex
+                  val readableBytes = buf.writerIndex - readerIndex
+                  if (readableBytes < writtenBytes) {
+                    in.progress(readableBytes)
+                    in.remove
+                    writtenBytes -= readableBytes
+                  }
+                  else if (readableBytes > writtenBytes) {
+                    buf.readerIndex(readerIndex + writtenBytes.toInt)
+                    in.progress(writtenBytes)
+                    break //todo: break is not supported
+                  }
+                  else { // readableBytes == writtenBytes
+                    in.progress(readableBytes)
+                    in.remove
+                    break //todo: break is not supported
+                  }
+                  {
+                    i -= 1;
+                    i + 1
+                  }
+                }
+              }
+              incompleteWrite(setOpWrite)
+              // break //todo: break is not supported
+              return
+            }
+            continue //todo: continue is not supported
+          }
+        }
+        val msg = in.current
+        if (msg == null) { // Wrote all messages.
+          connection.getSinkChannel.suspendWrites()
+          // break //todo: break is not supported
+          return
+        }
+        if (msg.isInstanceOf[ByteBuf]) {
+          var buf = msg.asInstanceOf[ByteBuf]
+          val readableBytes = buf.readableBytes
+          if (readableBytes == 0) {
+            in.remove
+            continue //todo: continue is not supported
+          }
+          if (!buf.isDirect) {
+            val alloc = this.alloc
+            if (alloc.isDirectBufferPooled) { // Non-direct buffers are copied into JDK's own internal direct buffer on every I/O.
+              // We can do a better job by using our pooled allocator. If the current allocator does not
+              // pool a direct buffer, we rely on JDK's direct buffer pool.
+              buf = alloc.directBuffer(readableBytes).writeBytes(buf)
+              in.current(buf)
+            }
+          }
           var setOpWrite = false
-          var i = config.getWriteSpinCount - 1
-          while ( {
-            i >= 0
-          }) {
-            val localWrittenBytes = sink.write(nioBuffers, 0, nioBufferCnt)
-            if (localWrittenBytes == 0) {
-              setOpWrite = true
-              break //todo: break is not supported
-            }
-            expectedWrittenBytes -= localWrittenBytes
-            writtenBytes += localWrittenBytes
-            if (expectedWrittenBytes == 0) {
-              done = true
-              break //todo: break is not supported
-            }
-            {
-              i -= 1; i + 1
-            }
-          }
-          if (done) { // Release all buffers
-            var i = msgCount
+          var done = false
+          var flushedAmount = 0
+          if (writeSpinCount == -1) writeSpinCount = config.getWriteSpinCount
+          var i = writeSpinCount - 1
+
+          breakable {
             while ( {
-              i > 0
+              i >= 0
             }) {
-              in.remove()
-              {
-                i -= 1; i + 1
-              }
-            }
-            // Finish the write loop if no new messages were flushed by in.remove().
-            if (in.isEmpty) {
-              connection.getSinkChannel.suspendWrites()
-              break //todo: break is not supported
-            }
-          }
-          else { // Did not write all buffers completely.
-            // Release the fully written buffers and update the indexes of the partially written buffer.
-            var i = msgCount
-            while ( {
-              i > 0
-            }) {
-              val buf = in.current.asInstanceOf[ByteBuf]
-              val readerIndex = buf.readerIndex
-              val readableBytes = buf.writerIndex - readerIndex
-              if (readableBytes < writtenBytes) {
-                in.progress(readableBytes)
-                in.remove
-                writtenBytes -= readableBytes
-              }
-              else if (readableBytes > writtenBytes) {
-                buf.readerIndex(readerIndex + writtenBytes.toInt)
-                in.progress(writtenBytes)
+              val localFlushedAmount = buf.readBytes(sink, buf.readableBytes)
+              if (localFlushedAmount == 0) {
+                setOpWrite = true
                 break //todo: break is not supported
               }
-              else { // readableBytes == writtenBytes
-                in.progress(readableBytes)
-                in.remove
+              flushedAmount += localFlushedAmount
+              if (!buf.isReadable) {
+                done = true
                 break //todo: break is not supported
               }
               {
-                i -= 1; i + 1
+                i -= 1;
+                i + 1
               }
             }
+          }
+
+          in.progress(flushedAmount)
+          if (done) in.remove
+          else {
             incompleteWrite(setOpWrite)
-            break //todo: break is not supported
+            // break //todo: break is not supported
+            return
           }
-          continue //todo: continue is not supported
         }
+        else if (msg.isInstanceOf[FileRegion]) {
+          val region = msg.asInstanceOf[FileRegion]
+          var setOpWrite = false
+          var done = false
+          var flushedAmount = 0
+          if (writeSpinCount == -1) writeSpinCount = config.getWriteSpinCount
+          var i = writeSpinCount - 1
+
+          breakable {
+            while ( {
+              i >= 0
+            }) {
+              val localFlushedAmount = region.transferTo(sink, region.transfered)
+              if (localFlushedAmount == 0) {
+                setOpWrite = true
+                break //todo: break is not supported
+              }
+              flushedAmount += localFlushedAmount
+              if (region.transfered >= region.count) {
+                done = true
+                break //todo: break is not supported
+              }
+              {
+                i -= 1;
+                i + 1
+              }
+            }
+          }
+
+          in.progress(flushedAmount)
+          if (done) in.remove
+          else {
+            incompleteWrite(setOpWrite)
+            // break //todo: break is not supported
+            return
+          }
+        }
+
+        else throw new UnsupportedOperationException("unsupported message type: " + StringUtil.simpleClassName(msg))
       }
-      val msg = in.current
-      if (msg == null) { // Wrote all messages.
-        connection.getSinkChannel.suspendWrites()
-        break //todo: break is not supported
-      }
-      if (msg.isInstanceOf[ByteBuf]) {
-        var buf = msg.asInstanceOf[ByteBuf]
-        val readableBytes = buf.readableBytes
-        if (readableBytes == 0) {
-          in.remove
-          continue //todo: continue is not supported
-        }
-        if (!buf.isDirect) {
-          val alloc = this.alloc
-          if (alloc.isDirectBufferPooled) { // Non-direct buffers are copied into JDK's own internal direct buffer on every I/O.
-            // We can do a better job by using our pooled allocator. If the current allocator does not
-            // pool a direct buffer, we rely on JDK's direct buffer pool.
-            buf = alloc.directBuffer(readableBytes).writeBytes(buf)
-            in.current(buf)
-          }
-        }
-        var setOpWrite = false
-        var done = false
-        var flushedAmount = 0
-        if (writeSpinCount == -1) writeSpinCount = config.getWriteSpinCount
-        var i = writeSpinCount - 1
-        while ( {
-          i >= 0
-        }) {
-          val localFlushedAmount = buf.readBytes(sink, buf.readableBytes)
-          if (localFlushedAmount == 0) {
-            setOpWrite = true
-            break //todo: break is not supported
-          }
-          flushedAmount += localFlushedAmount
-          if (!buf.isReadable) {
-            done = true
-            break //todo: break is not supported
-          }
-          {
-            i -= 1; i + 1
-          }
-        }
-        in.progress(flushedAmount)
-        if (done) in.remove
-        else {
-          incompleteWrite(setOpWrite)
-          break //todo: break is not supported
-        }
-      }
-      else if (msg.isInstanceOf[FileRegion]) {
-        val region = msg.asInstanceOf[FileRegion]
-        var setOpWrite = false
-        var done = false
-        var flushedAmount = 0
-        if (writeSpinCount == -1) writeSpinCount = config.getWriteSpinCount
-        var i = writeSpinCount - 1
-        while ( {
-          i >= 0
-        }) {
-          val localFlushedAmount = region.transferTo(sink, region.transfered)
-          if (localFlushedAmount == 0) {
-            setOpWrite = true
-            break //todo: break is not supported
-          }
-          flushedAmount += localFlushedAmount
-          if (region.transfered >= region.count) {
-            done = true
-            break //todo: break is not supported
-          }
-          {
-            i -= 1; i + 1
-          }
-        }
-        in.progress(flushedAmount)
-        if (done) in.remove
-        else {
-          incompleteWrite(setOpWrite)
-          break //todo: break is not supported
-        }
-      }
-      else throw new UnsupportedOperationException("unsupported message type: " + StringUtil.simpleClassName(msg))
     }
   }
 
@@ -389,34 +410,39 @@ abstract class AbstractXnioSocketChannel private[transport](_parent: AbstractXni
       try {
         val byteBufCapacity = allocHandle.guess
         var totalReadAmount = 0
-        do {
-          byteBuf = allocator.ioBuffer(byteBufCapacity)
-          val writable = byteBuf.writableBytes
-          val localReadAmount = byteBuf.writeBytes(channel, byteBuf.writableBytes)
-          if (localReadAmount <= 0) { // not was read release the buffer
-            byteBuf.release
-            close = localReadAmount < 0
-            break //todo: break is not supported
-          }
-          unsafe.asInstanceOf[AbstractXnioUnsafe].readPending = false
-          pipeline.fireChannelRead(byteBuf)
-          byteBuf = null
-          if (totalReadAmount >= Integer.MAX_VALUE - localReadAmount) { // Avoid overflow.
-            totalReadAmount = Integer.MAX_VALUE
-            break //todo: break is not supported
-          }
-          totalReadAmount += localReadAmount
-          // stop reading
-          if (!config.isAutoRead) break //todo: break is not supported
-          if (localReadAmount < writable) { // Read less than what the buffer can hold,
-            // which might mean we drained the recv buffer completely.
-            break //todo: break is not supported
-          }
-        } while ( {
-          {
-            messages += 1; messages
-          } < maxMessagesPerRead
-        })
+
+        breakable {
+          do {
+            byteBuf = allocator.ioBuffer(byteBufCapacity)
+            val writable = byteBuf.writableBytes
+            val localReadAmount = byteBuf.writeBytes(channel, byteBuf.writableBytes)
+            if (localReadAmount <= 0) { // not was read release the buffer
+              byteBuf.release
+              close = localReadAmount < 0
+              break //todo: break is not supported
+            }
+            unsafe.asInstanceOf[AbstractXnioUnsafe].readPending = false
+            pipeline.fireChannelRead(byteBuf)
+            byteBuf = null
+            if (totalReadAmount >= Integer.MAX_VALUE - localReadAmount) { // Avoid overflow.
+              totalReadAmount = Integer.MAX_VALUE
+              break //todo: break is not supported
+            }
+            totalReadAmount += localReadAmount
+            // stop reading
+            if (!config.isAutoRead) break //todo: break is not supported
+            if (localReadAmount < writable) { // Read less than what the buffer can hold,
+              // which might mean we drained the recv buffer completely.
+              break //todo: break is not supported
+            }
+          } while ( {
+            {
+              messages += 1;
+              messages
+            } < maxMessagesPerRead
+          })
+        }
+
         pipeline.fireChannelReadComplete
         allocHandle.record(totalReadAmount)
         if (close) {
