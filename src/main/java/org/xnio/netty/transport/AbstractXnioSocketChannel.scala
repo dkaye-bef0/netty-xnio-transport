@@ -80,7 +80,7 @@ object AbstractXnioSocketChannel {
 abstract class AbstractXnioSocketChannel private[transport](_parent: AbstractXnioServerSocketChannel) extends AbstractChannel(_parent) with SocketChannel {
   def continue = break // FIXME: stub for java continue
 
-  final private val config = new XnioSocketChannelConfig(this)
+  override val config = new XnioSocketChannelConfig(this)
   private var flushTask: Runnable = null
   private var writeListener: ChannelListener[ConduitStreamSinkChannel] = null
   private var closed = false
